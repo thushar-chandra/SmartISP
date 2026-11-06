@@ -1,0 +1,19 @@
+paths:
+  data_root: /content/data
+  checkpoint_dir: /content/checkpoints
+  output_dir: /content/outputs
+
+training:
+  device: cuda
+  batch_size: 16
+  num_workers: 2
+  amp: true
+  epochs: 100
+  patch_size: 256
+
+evaluation:
+  metrics:
+    - psnr
+    - ssim
+    - lpips
+    - delta_e_2000

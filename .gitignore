@@ -3,27 +3,43 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+*.egg-info/
+build/
+dist/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Secrets
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
 
 # Datasets
-data/
-datasets/
+/data/
+/datasets/
+!configs/datasets/
+!configs/datasets/**
 
-# Model weights
+# Model weights and training state
 *.pth
 *.pt
 *.ckpt
 *.onnx
 *.safetensors
 checkpoints/
+runs/
 
 # Outputs
 outputs/
 logs/
+*.log
 
 # Jupyter
 .ipynb_checkpoints/

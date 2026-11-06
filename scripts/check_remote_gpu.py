@@ -1,4 +1,5 @@
 import platform
+
 import torch
 
 print("Python:", platform.python_version())
@@ -11,7 +12,7 @@ if not torch.cuda.is_available():
 gpu = torch.cuda.get_device_properties(0)
 
 print("GPU:", gpu.name)
-print("GPU memory:", round(gpu.total_memory / (1024 ** 3), 2), "GB")
+print("GPU memory:", round(gpu.total_memory / (1024**3), 2), "GB")
 
 x = torch.randn(3000, 3000, device="cuda")
 y = x @ x

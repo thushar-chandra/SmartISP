@@ -1,0 +1,21 @@
+dataset:
+  name: example-raw-pairs
+  domain: bayer_raw
+  cfa: RGGB
+  input_dir: input
+  target_dir: target
+  input_extensions:
+    - .npy
+  target_extensions:
+    - .png
+  input_domain: bayer_raw
+  target_domain: srgb
+  crop_size: 256
+  split_policy: scene_disjoint
+  sensor:
+    bit_depth: 16
+    black_level: 64
+    white_level: 4095
+  notes: >-
+    RAW inputs must provide a CFA pattern and black/white levels. Targets are
+    display-referred sRGB images. Do not use this manifest for SIDD sRGB PNGs.

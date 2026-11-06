@@ -1,0 +1,18 @@
+dataset:
+  name: SIDD
+  domain: srgb
+  display_referred: true
+  input_dir: input
+  target_dir: target
+  input_extensions:
+    - .png
+  target_extensions:
+    - .png
+  input_domain: srgb
+  target_domain: srgb
+  crop_size: 256
+  split_policy: scene_disjoint
+  notes: >-
+    SIDD files distributed as sRGB PNGs are display-referred images, not Bayer
+    RAW mosaics. Keep this domain label unless a separately documented RAW
+    distribution and CFA metadata are used.
