@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Datasets
+data/
+datasets/
+
+# Model weights
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.safetensors
+checkpoints/
+
+# Outputs
+outputs/
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# System
+.DS_Store
+Thumbs.db
