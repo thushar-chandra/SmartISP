@@ -2,9 +2,10 @@
 
 ## Status
 
-Metric functions and efficiency measurement are interfaces in this release.
-They raise `NotImplementedError` and produce no numbers. The ablation matrix and
-failure taxonomy are plans, not completed analyses.
+Metric functions, efficiency measurement, ablation helpers, and failure-case
+summarization are implemented and unit-tested. Real numbers exist only for the
+runs recorded under `outputs/` (currently synthetic-pairs validation); the
+ablation matrix and failure taxonomy have not been executed on a real dataset.
 
 ## Image-quality metrics
 

@@ -7,14 +7,27 @@ workflow for Google Colab T4 GPUs.
 
 ## Project status
 
-This repository is at **stage 0: foundation and interfaces**. It contains the
-package layout, public interfaces, configuration, dataset provenance guards,
-documentation, and Colab workflow.
+The repository is at the **MVP demonstration stage**. All interfaces from the
+stage-0 scaffold are now implemented and tested:
 
-It does **not** contain trained checkpoints, completed algorithm
-implementations, or measured evaluation results. Interface placeholders raise
-`NotImplementedError` on purpose. No numbers in this repository should be
-mistaken for experimental results.
+- Classical ISP: full Bayer sensor pipeline and a conservative sRGB display
+  pipeline (verified on real image files).
+- Learned restoration: residual U-Net with a working forward/backward pass,
+  checkpoint save/load/resume, and a verified adapter (`RGBRestorer`).
+- Training: a real training loop with validation, best/last checkpoints, and
+  deterministic synthetic paired data (`smartisp.data.synthetic`).
+- Evaluation: PSNR, SSIM, CIEDE2000, optional LPIPS, latency/memory reporting,
+  and a traditional-vs-learned-vs-hybrid comparison script.
+- Demonstration: Streamlit app with upload, RAW/RGB modes, before/after view,
+  metrics against optional reference images, and PNG download.
+
+**Honesty boundaries that must not be violated:** the shipped demo checkpoint
+(`checkpoints/smartisp-synthetic_best.pt`, not in Git) is trained **only on
+deterministically degraded synthetic pairs**, not on real SIDD sensor data. Any
+learned mode without a checkpoint uses explicitly labeled untrained weights.
+Numbers measured on synthetic validation pairs are recorded in
+`outputs/evaluation_summary.json` after running
+`scripts/evaluate_demo.py`; no dataset benchmark may be quoted from them.
 
 ## Why hybrid ISP
 
@@ -104,6 +117,15 @@ uv run python -m smartisp.training.train --config configs/default.yaml --dry-run
 uv run python -m smartisp.training.validate --config configs/default.yaml --dry-run
 ```
 
+Full environment (torch + Streamlit), demo checkpoint training, and the app:
+
+```bash
+uv sync --extra dev --extra app --extra torch
+uv run python scripts/train_local_demo.py      # synthetic-pairs demo checkpoint
+uv run streamlit run apps/streamlit_app.py
+uv run python scripts/evaluate_demo.py         # classical vs learned vs hybrid
+```
+
 The default dev environment does not install PyTorch; the two torch-dependent
 tests in `tests/test_models.py` skip until the `torch` extra is installed.
 
@@ -151,9 +173,12 @@ automatically.
 
 ```bash
 colab new -s smartisp-t4 --gpu T4
-colab install -s smartisp-t4 -r requirements/colab.txt
-colab exec -s smartisp-t4 --env SMARTISP_REPO_URL=https://github.com/thushar-chandra/SmartISP.git -f scripts/colab_smoke_test.py
-colab log -s smartisp-t4 -o outputs/colab-smoke.md
+colab install -s smartisp-t4 -r requirements/colab_flat.txt
+colab exec -s smartisp-t4 \
+    --env SMARTISP_REPO_URL=https://github.com/thushar-chandra/SmartISP.git \
+    --env SMARTISP_SYNTHETIC=true --env SMARTISP_EPOCHS=5 \
+    -f scripts/colab_train.py
+colab log -s smartisp-t4 -o outputs/colab-train.md
 colab stop -s smartisp-t4
 ```
 

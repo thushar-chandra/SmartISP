@@ -103,8 +103,9 @@ and output types:
 | `ToneMapper` | `RGBImage` | `RGBImage` | Reinhard, filmic, ACES, gamma |
 | `Sharpener` | `RGBImage` | `RGBImage` | Unsharp mask, Laplacian, guided |
 
-All stages are current interface placeholders and raise `NotImplementedError`
-with a description of the planned behavior.
+All stages are implemented. `WhiteBalancer(method="learned")` and
+`ColorCorrector(method="learned")` still raise `NotImplementedError` on
+purpose: learned illuminant/color estimation is out of scope for this release.
 
 ## Learned restoration
 

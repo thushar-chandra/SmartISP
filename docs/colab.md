@@ -115,8 +115,7 @@ the repository or upload datasets. Use it for self-contained checks.
 1. Verifies Python, PyTorch, CUDA, and the T4 device.
 2. Clones the repository if `smartisp` is not importable.
 3. Imports the package and prints its version.
-4. Instantiates the U-Net configuration and verifies that the forward interface
-   is still an explicit placeholder.
+4. Instantiates the U-Net and runs a small CUDA forward pass on it.
 5. Runs a small CUDA matrix multiplication.
 6. Prints `SMOKE TEST PASSED` only when all checks pass.
 

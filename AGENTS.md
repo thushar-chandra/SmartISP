@@ -4,14 +4,16 @@ Repository-specific instructions for contributors and coding agents.
 
 ## Project status
 
-SmartISP is at **stage 0: foundation and interfaces**. The package layout,
-configuration, dataset provenance guards, documentation, and Colab workflow
-exist. Classical algorithms, the U-Net forward pass, losses, training,
-evaluation metrics, and Streamlit outputs are **interface placeholders** that
-raise `NotImplementedError`.
+SmartISP is at the **MVP demonstration stage**. Classical stages, the U-Net,
+losses, training/validation, evaluation metrics, and Streamlit outputs are
+implemented and covered by tests. The Colab T4 path is verified for a short
+GPU training run (loss decreased 0.738 -> 0.386 over 3 epochs on 2026-11-07)
+and for GPU inference from a saved checkpoint.
 
-Do not report or invent benchmark numbers, training curves, or completed
-results. Do not add fake implementations to make a demo look finished.
+Honesty constraints remain binding: the local demo checkpoint is trained only
+on deterministic synthetic pairs (`smartisp.data.synthetic`), never on real
+sensor data. No SIDD benchmark numbers exist or may be invented. Anything run
+without a checkpoint is explicitly labeled untrained.
 
 ## Environment
 
@@ -32,13 +34,26 @@ dependencies are pinned to exact versions. `requirements/*.txt` are pinned views
 used by Colab. `uv.lock` is committed; regenerate and commit it with dependency
 changes.
 
+A one-stop demo workflow (full extras assumed: `uv sync --extra dev --extra
+app --extra torch`):
+
 ```bash
-uv sync --extra dev
-uv sync --extra dev --extra app --extra torch
+uv run python scripts/train_local_demo.py      # trains demo checkpoint on synthetic pairs
+uv run streamlit run apps/streamlit_app.py     # demonstration UI
+uv run python scripts/evaluate_demo.py         # classical vs learned vs hybrid metrics
 ```
 
-The second command installs Streamlit and PyTorch; it is large. Use the first
-command for interface and configuration work.
+Remote Colab runs (session management unchanged; use `requirements/colab_flat.txt`
+because the CLI cannot resolve `-r base.txt` includes, it uploads a single
+file):
+
+```bash
+colab exec -s smartisp-t4 --env SMARTISP_SYNTHETIC=true --env SMARTISP_EPOCHS=3 \
+    -f scripts/colab_train.py
+colab exec -s smartisp-t4 --env SMARTISP_CHECKPOINT=/content/checkpoints/smartisp_best.pt \
+    --env SMARTISP_IMAGE=/content/data/val/input/srgb_scene_000.png \
+    -f scripts/colab_inference.py
+```
 
 ## Checks
 
@@ -145,15 +160,22 @@ Notes:
 - Update this file when commands, package boundaries, or the Colab workflow
   change.
 
-## Current placeholders
+## Implemented status
 
-These raise `NotImplementedError` by design:
+Implemented and covered by tests: classical stages (Bayer preprocessor, white
+balance, demosaic, color correction, denoise, tone mapping, sharpen, both a
+full sensor pipeline and a conservative sRGB display pipeline), U-Net forward/
+backward with automatic size padding, composite losses, checkpoint
+save/load/resume, `PairedImageDataset` decoding/normalization/augmentation,
+PSNR/SSIM/CIEDE2000/LPIPS, latency and memory measurement, the hybrid pipeline,
+the Streamlit app, and both Colab scripts.
 
-- All classical stage `process` methods.
-- `UNetRestorer.forward`, `RestorationLoss.forward`.
-- `PairedImageDataset.__getitem__`, preprocessing transforms, `collate_paired`.
-- Metric functions and `measure_inference`.
-- `Trainer.fit`, `Trainer.validate`, and non-dry-run training/validation CLIs.
+Not covered (by design, honesty constraints):
 
-The training and validation CLIs support `--dry-run` and return exit code `2`
-when asked to execute unavailable implementations.
+- No SIDD or other real-sensor training; the demo checkpoint is synthetic-only.
+- RAW-domain (`PRE_ISP`) learned restoration has no RAW-trained checkpoint;
+  `RGBRestorer` rejects `RawFrame` input on purpose.
+- LPIPS transparently raises `ImportError` when the torch extra is absent.
+
+The training and validation CLIs still support `--dry-run` and return exit
+code `2` when inputs (data, checkpoint) are missing.

@@ -73,14 +73,10 @@ def main() -> int:
     from smartisp.models.unet import UNetRestorer
 
     print("SmartISP version:", __version__)
-    model = UNetRestorer(UNetConfig())
-    try:
-        model.restore(torch.zeros(1, 3, 32, 32, device="cuda"))
-    except NotImplementedError as exc:
-        print("UNet interface check: OK")
-        print("Pending:", exc)
-    else:
-        raise SystemExit("FAILED: expected the U-Net interface to be unimplemented")
+    model = UNetRestorer(UNetConfig(depth=2, base_channels=8)).to("cuda")
+    output = model(torch.zeros(1, 3, 64, 68, device="cuda"))
+    if tuple(output.shape) != (1, 3, 64, 68):
+        raise SystemExit("FAILED: U-Net produced an unexpected output shape")
 
     matrix = torch.randn(2000, 2000, device="cuda")
     result = matrix @ matrix
