@@ -81,7 +81,9 @@ def main() -> int:
     else:
         config_path = Path(os.environ.get("SMARTISP_CONFIG", "configs/colab_t4.yaml"))
         config_root = Path(os.environ.get("SMARTISP_REPO_DIR", "/content/SmartISP"))
-        resolved = config_root / config_path if (config_root / config_path).is_file() else config_path
+        resolved = (
+            config_root / config_path if (config_root / config_path).is_file() else config_path
+        )
         model_config = None
         try:
             import yaml

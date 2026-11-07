@@ -86,7 +86,9 @@ def main() -> int:
         Path(os.environ.get("SMARTISP_REPO_DIR", ".")),
         Path.cwd(),
     ]
-    root = next((candidate for candidate in candidates if (candidate / config_path).is_file()), Path.cwd())
+    root = next(
+        (candidate for candidate in candidates if (candidate / config_path).is_file()), Path.cwd()
+    )
     import yaml
 
     raw = yaml.safe_load((root / config_path).read_text(encoding="utf-8"))
