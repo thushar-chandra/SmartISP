@@ -13,11 +13,15 @@ from smartisp.models.config import LossConfig, LossKind, UNetConfig
 __all__ = [
     "LossConfig",
     "LossKind",
+    "RGBRestorer",
     "RestorationLoss",
     "UNetConfig",
     "UNetRestorer",
     "build_loss",
+    "build_restorer",
     "build_unet",
+    "load_restorer",
+    "save_checkpoint",
 ]
 
 
@@ -36,6 +40,20 @@ def __getattr__(name: str) -> Any:
         return {
             "RestorationLoss": RestorationLoss,
             "build_loss": build_loss,
+        }[name]
+    if name in {
+        "RGBRestorer",
+        "build_restorer",
+        "load_restorer",
+        "save_checkpoint",
+    }:
+        from smartisp.models import inference
+
+        return {
+            "RGBRestorer": inference.RGBRestorer,
+            "build_restorer": inference.build_restorer,
+            "load_restorer": inference.load_restorer,
+            "save_checkpoint": inference.save_checkpoint,
         }[name]
     raise AttributeError(name)
 

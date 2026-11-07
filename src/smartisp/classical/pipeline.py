@@ -9,8 +9,8 @@ from smartisp.classical.base import ISPContext, ISPStage
 from smartisp.classical.bayer import BayerPreprocessor
 from smartisp.classical.color_correction import ColorCorrector
 from smartisp.classical.demosaic import Demosaicer
-from smartisp.classical.denoise import Denoiser
-from smartisp.classical.sharpen import Sharpener
+from smartisp.classical.denoise import DenoiseConfig, Denoiser
+from smartisp.classical.sharpen import SharpenConfig, Sharpener
 from smartisp.classical.tone_mapping import ToneMapper
 from smartisp.classical.white_balance import WhiteBalancer
 from smartisp.types import ImageBuffer
@@ -93,3 +93,21 @@ def default_stages() -> tuple[ISPStage, ...]:
 def build_default_pipeline() -> ClassicalISPPipeline:
     """Construct the classical baseline pipeline."""
     return ClassicalISPPipeline(default_stages())
+
+
+def default_display_stages() -> tuple[ISPStage, ...]:
+    """Return a conservative display-referred enhancer for sRGB inputs.
+
+    Display-referred uploads are not Bayer RAW, so the full sensor pipeline does
+    not apply. Denoising and sharpening are still well-defined on sRGB data.
+    """
+    stages: tuple[ISPStage, ...] = (
+        Denoiser(DenoiseConfig(strength=0.5, sigma_color=0.02, sigma_space=1.5)),
+        Sharpener(SharpenConfig(amount=0.5)),
+    )
+    return stages
+
+
+def build_display_pipeline() -> ClassicalISPPipeline:
+    """Construct the sRGB-only enhancement pipeline."""
+    return ClassicalISPPipeline(default_display_stages())

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
+
+import numpy as np
 import pytest
 
 from smartisp.evaluation import (
@@ -47,15 +50,31 @@ def test_metric_directions() -> None:
     assert MetricValue(MetricName.LPIPS, 0.1).higher_is_better is False
 
 
-def test_metric_implementations_are_placeholders() -> None:
-    with pytest.raises(NotImplementedError):
-        psnr(None, None)
-    with pytest.raises(NotImplementedError):
-        ssim(None, None)
-    with pytest.raises(NotImplementedError):
-        lpips_distance(None, None)
-    with pytest.raises(NotImplementedError):
-        delta_e_2000(None, None)
+def test_metric_implementations() -> None:
+    rng = np.random.default_rng(0)
+    target = rng.random((32, 32, 3), dtype=np.float32)
+    prediction = np.clip(target + 0.05 * rng.standard_normal(target.shape), 0.0, 1.0)
+    assert np.isfinite(psnr(prediction, target))
+    assert -1.0 <= ssim(prediction, target) <= 1.0
+    assert delta_e_2000(prediction, target) >= 0.0
+    assert psnr(target, target) == float("inf")
+    assert ssim(target, target) == pytest.approx(1.0, abs=1e-4)
+    assert delta_e_2000(target, target) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_psnr_known_value() -> None:
+    prediction = np.zeros((8, 8, 3), dtype=np.float32)
+    target = np.full((8, 8, 3), 0.5, dtype=np.float32)
+    assert psnr(prediction, target) == pytest.approx(6.0206, abs=1e-3)
+
+
+def test_lpips_reports_missing_dependency_or_runs() -> None:
+    target = np.random.default_rng(1).random((16, 16, 3), dtype=np.float32)
+    if importlib.util.find_spec("lpips") is None:
+        with pytest.raises(ImportError):
+            lpips_distance(target, target)
+    else:
+        assert lpips_distance(target, target) == pytest.approx(0.0, abs=1e-4)
 
 
 def test_metric_config_validation() -> None:

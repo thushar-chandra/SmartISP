@@ -1,8 +1,9 @@
-"""Runtime and memory measurement interfaces."""
+"""Runtime and memory measurement."""
 
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -82,13 +83,100 @@ def summarize_latencies(samples_ms: Sequence[float]) -> dict[str, float]:
     }
 
 
+def _torch_module() -> Any | None:
+    try:
+        import torch
+    except ImportError:
+        return None
+    return torch
+
+
+def _cuda_available(torch: Any) -> bool:
+    return bool(torch is not None and torch.cuda.is_available())
+
+
+def _synchronize(torch: Any, enabled: bool) -> None:
+    if enabled and _cuda_available(torch):
+        torch.cuda.synchronize()
+
+
+def _peak_host_memory_mb() -> float | None:
+    try:
+        import psutil
+    except ImportError:
+        return None
+    return float(psutil.Process().memory_info().rss) / (1024.0 * 1024.0)
+
+
 def measure_inference(
     callable_: Any,
     inputs: Any,
     config: EfficiencyConfig | None = None,
 ) -> EfficiencyReport:
-    raise NotImplementedError(
-        "measure_inference is an interface placeholder; planned: warmup, device "
-        "synchronization, torch.cuda.max_memory_allocated, psutil RSS, and "
-        "p50/p90/p95 reporting"
+    """Time repeated inference calls and record peak GPU/host memory."""
+    settings = config or EfficiencyConfig()
+    torch = _torch_module()
+    if settings.device == "auto":
+        device = "cuda" if _cuda_available(torch) else "cpu"
+    else:
+        device = settings.device
+
+    def _invoke() -> Any:
+        if isinstance(inputs, tuple):
+            return callable_(*inputs)
+        if isinstance(inputs, list):
+            return callable_(*inputs)
+        return callable_(inputs)
+
+    try:
+        import psutil
+
+        process = psutil.Process()
+        process.cpu_percent(None)
+    except ImportError:
+        process = None
+
+    if torch is not None and _cuda_available(torch) and settings.include_gpu_memory:
+        torch.cuda.reset_peak_memory_stats()
+
+    samples_ms: list[float] = []
+    peak_host = 0.0
+    for _ in range(settings.warmup_runs):
+        if torch is not None:
+            with torch.no_grad():
+                _invoke()
+        else:
+            _invoke()
+        _synchronize(torch, settings.synchronize)
+
+    for _ in range(settings.timed_runs):
+        start = time.perf_counter()
+        if torch is not None:
+            with torch.no_grad():
+                _invoke()
+        else:
+            _invoke()
+        _synchronize(torch, settings.synchronize)
+        samples_ms.append((time.perf_counter() - start) * 1000.0)
+        if settings.include_host_memory:
+            peak_host = max(peak_host, _peak_host_memory_mb() or 0.0)
+
+    summary = summarize_latencies(samples_ms)
+    peak_gpu: float | None = None
+    if torch is not None and _cuda_available(torch) and settings.include_gpu_memory:
+        peak_gpu = float(torch.cuda.max_memory_allocated()) / (1024.0 * 1024.0)
+
+    notes = "single-process wall-clock measurement"
+    if process is not None:
+        notes += "; host memory is process RSS, not isolated model allocation"
+
+    return EfficiencyReport(
+        device=device,
+        latency_ms_p50=summary["p50"],
+        latency_ms_p90=summary["p90"],
+        latency_ms_p95=summary["p95"],
+        throughput_fps=1000.0 / max(summary["p50"], 1e-9),
+        peak_gpu_memory_mb=peak_gpu,
+        peak_host_memory_mb=peak_host if settings.include_host_memory else None,
+        notes=notes,
     )

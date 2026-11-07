@@ -1,16 +1,18 @@
-"""Camera color correction matrix interfaces."""
+"""Camera color correction matrix application."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
 
-from smartisp.classical.base import ISPContext, interface_not_implemented
+import numpy as np
+
+from smartisp.classical.base import ISPContext
 from smartisp.types import RGBImage
 
 
 class ColorCorrectionMethod(StrEnum):
-    """Planned color correction sources."""
+    """Supported color correction sources."""
 
     MATRIX = "matrix"
     CAMERA_METADATA = "camera_metadata"
@@ -43,7 +45,32 @@ class ColorCorrector:
         self.config = config or ColorCorrectionConfig()
 
     def process(self, image: RGBImage, context: ISPContext | None = None) -> RGBImage:
-        raise interface_not_implemented(
-            self.name,
-            "apply a camera or configured 3x3 CCM in linear RGB, then clip if requested",
+        if not isinstance(image, RGBImage):
+            raise TypeError("ColorCorrector requires an RGBImage input")
+        if self.config.method is ColorCorrectionMethod.LEARNED:
+            raise NotImplementedError("learned color correction is not part of this release")
+
+        matrix = self.config.matrix
+        if matrix is None and context is not None:
+            matrix = context.color_matrix
+        data = np.asarray(image.data, dtype=np.float32)
+        if matrix is None:
+            corrected = data.copy()
+            applied = False
+        else:
+            corrected = data @ np.asarray(matrix, dtype=np.float32).T
+            applied = True
+        if self.config.clamp:
+            np.clip(corrected, 0.0, 1.0, out=corrected)
+
+        color_space = image.color_space
+        if context is not None and context.working_space is not None and applied:
+            color_space = context.working_space
+        metadata = dict(image.metadata)
+        metadata["color_correction"] = {"applied": applied, "matrix": matrix}
+        return RGBImage(
+            data=corrected,
+            color_space=color_space,
+            bit_depth=image.bit_depth,
+            metadata=metadata,
         )

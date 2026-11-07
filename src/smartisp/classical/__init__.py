@@ -13,6 +13,8 @@ from smartisp.classical.pipeline import (
     ClassicalISPPipeline,
     PipelineTrace,
     build_default_pipeline,
+    build_display_pipeline,
+    default_display_stages,
     default_stages,
 )
 from smartisp.classical.sharpen import SharpenConfig, Sharpener, SharpenMethod
@@ -50,6 +52,8 @@ __all__ = [
     "WhiteBalanceMethod",
     "WhiteBalancer",
     "build_default_pipeline",
+    "build_display_pipeline",
+    "default_display_stages",
     "default_stages",
     "interface_not_implemented",
 ]

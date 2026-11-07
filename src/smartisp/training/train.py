@@ -1,4 +1,4 @@
-"""Training CLI scaffold."""
+"""Training CLI."""
 
 from __future__ import annotations
 
@@ -10,13 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from smartisp.config import load_config
+from smartisp.models.config import LossConfig, UNetConfig
 from smartisp.training.config import TrainConfig
+from smartisp.training.engine import Trainer
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="smartisp-train",
-        description="Train the SmartISP restoration model (interface scaffold).",
+        description="Train the SmartISP restoration model.",
     )
     parser.add_argument(
         "--config",
@@ -36,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--limit-batches", type=int, default=None)
     parser.add_argument("--resume", type=Path, default=None)
     parser.add_argument(
         "--dry-run",
@@ -67,25 +70,51 @@ def resolve_section(args: argparse.Namespace) -> dict[str, Any]:
     return section
 
 
+def _model_config(raw: dict[str, Any]) -> UNetConfig:
+    values = raw.get("model", {})
+    known = {field.name for field in UNetConfig.__dataclass_fields__.values()}
+    return UNetConfig(**{key: value for key, value in values.items() if key in known})
+
+
+def _loss_config(raw: dict[str, Any]) -> LossConfig:
+    values = raw.get("loss", {})
+    known = {field.name for field in LossConfig.__dataclass_fields__.values()}
+    return LossConfig(**{key: value for key, value in values.items() if key in known})
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    config = TrainConfig.from_mapping(resolve_section(args))
+    raw = load_config(args.config, *args.override)
+    section = resolve_section(args)
+    config = TrainConfig.from_mapping(section)
     if args.dry_run:
-        print(json.dumps(config.to_dict(), indent=2, sort_keys=True))
-        print("dry-run: training implementation is intentionally not available yet")
+        payload = config.to_dict()
+        payload["model"] = _model_config(raw).__dict__
+        payload["loss"] = _loss_config(raw).__dict__
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        print("dry-run: configuration resolved; no training performed")
         return 0
 
     if config.resume is not None and not config.resume.exists():
         print(f"error: checkpoint does not exist: {config.resume}", file=sys.stderr)
         return 2
-    print(
-        "SmartISP training is not implemented in this foundation release. "
-        "Use --dry-run to validate configuration, or follow docs/methodology.md "
-        "for the planned implementation stages.",
-        file=sys.stderr,
-    )
-    return 2
+    try:
+        trainer = Trainer(
+            config,
+            model_config=_model_config(raw),
+            loss_config=_loss_config(raw),
+            limit_batches=args.limit_batches,
+        )
+        result = trainer.fit()
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ImportError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({"status": "completed", **result}, indent=2, default=str))
+    return 0
 
 
 if __name__ == "__main__":

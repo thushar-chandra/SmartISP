@@ -1,9 +1,11 @@
-"""Torch data loader interfaces kept separate from dataset discovery."""
+"""Torch data loader construction and pairing collation."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -26,11 +28,31 @@ class DataLoaderConfig:
             raise ValueError("persistent_workers requires num_workers > 0")
 
 
+def _stack(values: list[Any]) -> Any:
+    first = values[0]
+    if hasattr(first, "detach"):
+        import torch
+
+        return torch.stack(values, dim=0)
+    if isinstance(first, np.ndarray):
+        return np.stack(values, axis=0)
+    return values
+
+
 def collate_paired(samples: Any) -> Any:
-    raise NotImplementedError(
-        "collate_paired is an interface placeholder; planned: stack input/target "
-        "tensors and collate domain metadata without dropping provenance"
-    )
+    """Stack array/tensor fields and keep provenance metadata as lists."""
+    if not samples:
+        return {}
+    keys = set(samples[0])
+    batch: dict[str, Any] = {}
+    for key in keys:
+        values = [sample[key] for sample in samples]
+        first = values[0]
+        if isinstance(first, np.ndarray) or hasattr(first, "detach"):
+            batch[key] = _stack(values)
+        else:
+            batch[key] = values
+    return batch
 
 
 def build_dataloader(dataset: Any, config: DataLoaderConfig) -> Any:

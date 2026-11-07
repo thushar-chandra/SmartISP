@@ -27,21 +27,59 @@ def test_loss_config_validation() -> None:
         LossConfig(perceptual_net="unknown")
 
 
-def test_unet_interface_placeholder() -> None:
-    pytest.importorskip("torch")
+def test_unet_forward_handles_arbitrary_sizes() -> None:
+    torch = pytest.importorskip("torch")
     from smartisp.models.unet import UNetRestorer, build_unet
 
-    model = build_unet(UNetConfig(base_channels=8, max_channels=64))
+    config = UNetConfig(base_channels=4, max_channels=16, depth=2, groups=2)
+    model = build_unet(config)
     assert isinstance(model, UNetRestorer)
-    with pytest.raises(NotImplementedError):
-        model.restore(None)
+    inputs = torch.rand(2, 3, 30, 34)
+    output = model.restore(inputs)
+    assert output.shape == inputs.shape
+    assert torch.isfinite(output).all()
 
 
-def test_loss_interface_placeholder() -> None:
+def test_unet_residual_is_additive_at_initialization() -> None:
+    torch = pytest.importorskip("torch")
+    from smartisp.models.unet import UNetRestorer
+
+    model = UNetRestorer(UNetConfig(base_channels=4, max_channels=8, depth=1, residual=True))
+    for parameter in model.parameters():
+        torch.nn.init.zeros_(parameter)
+    inputs = torch.full((1, 3, 8, 8), 0.25)
+    output = model(inputs)
+    assert torch.allclose(output, inputs)
+
+
+def test_loss_forward_and_backward() -> None:
+    torch = pytest.importorskip("torch")
+    from smartisp.models.losses import build_loss
+
+    loss = build_loss(LossConfig(kind=LossKind.COMPOSITE))
+    prediction = torch.rand(1, 3, 16, 16, requires_grad=True)
+    target = torch.rand(1, 3, 16, 16)
+    value = loss(prediction, target)
+    assert torch.isfinite(value)
+    value.backward()
+    assert prediction.grad is not None
+    assert torch.isfinite(prediction.grad).all()
+
+
+def test_rgb_restorer_adapter() -> None:
     pytest.importorskip("torch")
-    from smartisp.models.losses import RestorationLoss, build_loss
+    import numpy as np
 
-    loss = build_loss(LossConfig())
-    assert isinstance(loss, RestorationLoss)
-    with pytest.raises(NotImplementedError):
-        loss(None, None)
+    from smartisp.models.inference import build_restorer
+    from smartisp.types import ColorSpace, RGBImage
+
+    restorer = build_restorer(None, device="cpu")
+    assert restorer.is_trained is False
+    image = RGBImage(
+        data=np.random.default_rng(0).random((16, 16, 3), dtype=np.float32),
+        color_space=ColorSpace.SRGB,
+    )
+    output = restorer.restore(image)
+    assert isinstance(output, RGBImage)
+    assert output.shape == image.shape
+    assert output.data.min() >= 0.0 and output.data.max() <= 1.0

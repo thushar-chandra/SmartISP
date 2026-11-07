@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
+from PIL import Image
 
 from smartisp.data import (
     DatasetProvenance,
@@ -84,9 +86,46 @@ def test_config_rejects_escaping_directories(tmp_path: Path) -> None:
         PairedDatasetConfig(root=tmp_path, input_dir="../outside")
 
 
-def test_getitem_is_interface_placeholder(tmp_path: Path) -> None:
-    _touch(tmp_path / "input" / "a.png")
-    _touch(tmp_path / "target" / "a.png")
-    dataset = PairedImageDataset(PairedDatasetConfig(root=tmp_path))
-    with pytest.raises(NotImplementedError):
+def _write_png(path: Path, seed: int = 0) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    array = np.random.default_rng(seed).integers(0, 256, (16, 16, 3), dtype=np.uint8)
+    Image.fromarray(array).save(path)
+
+
+def test_dataset_getitem_decodes_srgb_pair(tmp_path: Path) -> None:
+    _write_png(tmp_path / "input" / "a.png", seed=1)
+    _write_png(tmp_path / "target" / "a.png", seed=2)
+    dataset = PairedImageDataset(PairedDatasetConfig(root=tmp_path, crop_size=8))
+    sample = dataset[0]
+    assert sample["input"].shape == (8, 8, 3)
+    assert sample["target"].shape == (8, 8, 3)
+    assert sample["input"].dtype == np.float32
+    assert 0.0 <= float(sample["input"].min()) <= float(sample["input"].max()) <= 1.0
+    assert sample["key"] == "a"
+
+
+def test_dataset_getitem_requires_cfa_for_raw(tmp_path: Path) -> None:
+    (tmp_path / "input").mkdir()
+    (tmp_path / "target").mkdir()
+    np.save(tmp_path / "input" / "a.npy", np.zeros((8, 8), dtype=np.uint16))
+    _write_png(tmp_path / "target" / "a.png")
+    config = PairedDatasetConfig(
+        root=tmp_path,
+        input_domain=Domain.BAYER_RAW,
+        target_domain=Domain.SRGB,
+        input_extensions=(".npy",),
+        target_extensions=(".png",),
+    )
+    dataset = PairedImageDataset(config)
+    with pytest.raises(ValueError, match="cfa"):
         dataset[0]
+    raw_config = PairedDatasetConfig(
+        root=tmp_path,
+        input_domain=Domain.BAYER_RAW,
+        target_domain=Domain.SRGB,
+        input_extensions=(".npy",),
+        target_extensions=(".png",),
+        cfa=CFAPattern.RGGB,
+    )
+    sample = PairedImageDataset(raw_config)[0]
+    assert sample["input"].shape == (8, 8)

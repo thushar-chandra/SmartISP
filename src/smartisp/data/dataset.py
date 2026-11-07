@@ -1,4 +1,4 @@
-"""Paired dataset discovery with strict domain/provenance checks."""
+"""Paired dataset discovery and decoding with strict provenance checks."""
 
 from __future__ import annotations
 
@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from smartisp.data.domains import Domain, validate_domain_for_suffix
+from smartisp.data.preprocessing import PatchConfig, random_crop_pair
+from smartisp.types import CFAPattern
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,8 @@ class PairedDatasetConfig:
     seed: int = 0
     recursive: bool = True
     allow_domain_override: bool = False
+    cfa: CFAPattern | None = None
+    augment: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "root", Path(self.root))
@@ -139,11 +145,44 @@ def discover_pairs(
     )
 
 
-class PairedImageDataset:
-    """Index a paired dataset and expose tensor-ready samples.
+def _read_array(path: Path, domain: Domain) -> np.ndarray:
+    suffix = path.suffix.lower()
+    if suffix == ".npy":
+        array = np.load(path, allow_pickle=False)
+    else:
+        import cv2
 
-    File discovery and provenance validation are implemented now. Decoding and
-    tensor conversion are intentionally deferred to the training stage.
+        loaded = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if loaded is None:
+            raise ValueError(f"failed to decode image: {path}")
+        if loaded.ndim == 3 and loaded.shape[2] == 3:
+            array = loaded[..., ::-1]
+        elif loaded.ndim == 3 and loaded.shape[2] == 4:
+            array = loaded[..., 2::-1]
+        else:
+            array = loaded
+
+    if np.issubdtype(array.dtype, np.integer):
+        array = array.astype(np.float32) / float(np.iinfo(array.dtype).max)
+    else:
+        array = array.astype(np.float32)
+
+    if domain in {Domain.SRGB, Domain.LINEAR_RGB}:
+        if array.ndim == 2:
+            array = np.repeat(array[..., None], 3, axis=-1)
+        if array.ndim != 3 or array.shape[2] != 3:
+            raise ValueError(f"{path} must decode to three channels for {domain.value}")
+    elif domain is Domain.BAYER_RAW and array.ndim != 2:
+        raise ValueError(f"{path} must decode to a single-channel mosaic for BAYER_RAW")
+    return np.ascontiguousarray(array)
+
+
+class PairedImageDataset:
+    """Index a paired dataset and expose decoded, tensor-ready samples.
+
+    Files are normalized to ``float32`` in ``[0, 1]`` on the CPU. Training is
+    responsible for converting samples to framework tensors, which keeps the
+    dataset usable in the lightweight environment.
     """
 
     def __init__(self, config: PairedDatasetConfig) -> None:
@@ -172,10 +211,32 @@ class PairedImageDataset:
         return len(self.entries)
 
     def __getitem__(self, index: int) -> Any:
-        raise NotImplementedError(
-            "PairedImageDataset.__getitem__ is an interface placeholder; planned: "
-            "domain-aware decoding, synchronized crops, normalization, and metadata"
-        )
+        entry = self.entries[index]
+        config = self.config
+        input_array = _read_array(entry.input_path, config.input_domain)
+        target_array = _read_array(entry.target_path, config.target_domain)
+        if config.input_domain is Domain.BAYER_RAW and config.cfa is None:
+            raise ValueError("BAYER_RAW samples require an explicit cfa in PairedDatasetConfig")
+
+        if config.crop_size is not None:
+            patch = PatchConfig(size=config.crop_size, random=True)
+            input_array, target_array = random_crop_pair(
+                input_array, target_array, patch, seed=config.seed + index
+            )
+        if config.augment:
+            from smartisp.data.preprocessing import synchronized_augment
+
+            input_array, target_array = synchronized_augment(
+                input_array, target_array, seed=config.seed + index
+            )
+
+        return {
+            "input": input_array.astype(np.float32, copy=False),
+            "target": target_array.astype(np.float32, copy=False),
+            "key": entry.relative_key,
+            "input_domain": config.input_domain.value,
+            "target_domain": config.target_domain.value,
+        }
 
     def __repr__(self) -> str:
         return (

@@ -138,14 +138,77 @@ def summarize_failure_cases(cases: list[FailureCase]) -> dict[str, int]:
 
 
 def run_ablation(variant: AblationVariant, dataset: Any, config: Any) -> Any:
-    raise NotImplementedError(
-        "run_ablation is an interface placeholder; planned: execute each variant "
-        "with fixed seeds, collect metrics, and emit machine-readable reports"
-    )
+    """Evaluate one ablation variant over a paired dataset.
+
+    ``config`` must be a mapping with a ``"process"`` callable that accepts one
+    dataset sample and returns an image array. Metrics default to PSNR, SSIM,
+    and CIEDE2000. The returned payload contains measured values only.
+    """
+    from collections.abc import Mapping
+
+    from smartisp.evaluation.metrics import MetricName, evaluate_pair
+
+    if not isinstance(config, Mapping):
+        raise TypeError("config must be a mapping with a 'process' callable")
+    process = config.get("process")
+    if not callable(process):
+        raise ValueError("config['process'] must be callable")
+    metric_names = [
+        MetricName(name) for name in config.get("metrics", ["psnr", "ssim", "delta_e_2000"])
+    ]
+    limit = config.get("limit")
+    count = len(dataset) if limit is None else min(len(dataset), int(limit))
+    totals: dict[str, float] = {}
+    for index in range(count):
+        sample = dataset[index]
+        prediction = process(sample)
+        target = sample["target"] if isinstance(sample, Mapping) else sample
+        values = evaluate_pair(prediction, target, metric_names, config.get("metric_config"))
+        for name, value in values.items():
+            totals[name] = totals.get(name, 0.0) + value
+    metrics = {name: value / count for name, value in totals.items()} if count else {}
+    return {
+        "variant": variant.name,
+        "mode": variant.mode.value,
+        "images": count,
+        "metrics": metrics,
+    }
 
 
 def classify_failure(image: Any, reference: Any, metrics: dict[str, float]) -> FailureCase:
-    raise NotImplementedError(
-        "classify_failure is an interface placeholder; planned: combine metric "
-        "thresholds with visual inspection notes instead of automatic claims"
+    """Assign a conservative failure category from measured metrics.
+
+    The classifier only reports categories that the supplied metrics support.
+    It never claims a visual diagnosis without the caller attaching artifacts or
+    notes to the returned case.
+    """
+    psnr_value = metrics.get("psnr")
+    ssim_value = metrics.get("ssim")
+    delta_e = metrics.get("delta_e_2000")
+    if psnr_value is not None and psnr_value < 20.0:
+        category = FailureCategory.LEARNED_ARTIFACT
+        description = "low PSNR indicates a large reconstruction error"
+    elif ssim_value is not None and ssim_value < 0.6:
+        category = FailureCategory.LEARNED_ARTIFACT
+        description = "low SSIM indicates structural distortion"
+    elif delta_e is not None and delta_e > 12.0:
+        category = FailureCategory.COLOR_CAST
+        description = "high CIEDE2000 indicates a color shift"
+    elif (
+        psnr_value is not None
+        and psnr_value > 40.0
+        and ssim_value is not None
+        and ssim_value > 0.98
+    ):
+        category = FailureCategory.OTHER
+        description = "metrics indicate a close match; inspect residual artifacts"
+    else:
+        category = FailureCategory.OTHER
+        description = "no metric threshold was crossed"
+    case_id = metrics.get("case_id", "case")
+    return FailureCase(
+        case_id=str(case_id),
+        category=category,
+        description=description,
+        metrics=dict(metrics),
     )

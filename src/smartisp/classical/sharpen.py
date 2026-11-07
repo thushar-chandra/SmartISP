@@ -1,16 +1,19 @@
-"""Sharpening interfaces."""
+"""Sharpening."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
 
-from smartisp.classical.base import ISPContext, interface_not_implemented
+import cv2
+import numpy as np
+
+from smartisp.classical.base import ISPContext
 from smartisp.types import RGBImage
 
 
 class SharpenMethod(StrEnum):
-    """Planned sharpening methods."""
+    """Supported sharpening methods."""
 
     UNSHARP_MASK = "unsharp_mask"
     LAPLACIAN = "laplacian"
@@ -45,7 +48,30 @@ class Sharpener:
         self.config = config or SharpenConfig()
 
     def process(self, image: RGBImage, context: ISPContext | None = None) -> RGBImage:
-        raise interface_not_implemented(
-            self.name,
-            "implement unsharp masking and edge-aware sharpening with halo control",
+        if not isinstance(image, RGBImage):
+            raise TypeError("Sharpener requires an RGBImage input")
+
+        data = np.asarray(image.data, dtype=np.float32)
+        config = self.config
+        if config.amount == 0.0:
+            sharpened = data.copy()
+        elif config.method is SharpenMethod.LAPLACIAN:
+            detail = cv2.Laplacian(data, cv2.CV_32F, ksize=3)
+            sharpened = data + config.amount * detail
+        else:
+            sigma = max(0.1, float(config.radius))
+            blurred = cv2.GaussianBlur(data, (0, 0), sigmaX=sigma, sigmaY=sigma)
+            detail = data - blurred
+            if config.threshold > 0:
+                detail = np.where(np.abs(detail) >= config.threshold, detail, 0.0)
+            sharpened = data + config.amount * detail
+        if config.clamp:
+            np.clip(sharpened, 0.0, 1.0, out=sharpened)
+        metadata = dict(image.metadata)
+        metadata["sharpen"] = {"method": config.method.value, "amount": config.amount}
+        return RGBImage(
+            data=sharpened.astype(np.float32),
+            color_space=image.color_space,
+            bit_depth=image.bit_depth,
+            metadata=metadata,
         )
