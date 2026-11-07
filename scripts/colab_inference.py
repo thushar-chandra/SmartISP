@@ -80,11 +80,13 @@ def main() -> int:
         print("using trained checkpoint:", checkpoint_path)
     else:
         config_path = Path(os.environ.get("SMARTISP_CONFIG", "configs/colab_t4.yaml"))
+        config_root = Path(os.environ.get("SMARTISP_REPO_DIR", "/content/SmartISP"))
+        resolved = config_root / config_path if (config_root / config_path).is_file() else config_path
         model_config = None
         try:
             import yaml
 
-            model = (yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}).get("model", {})
+            model = (yaml.safe_load(resolved.read_text(encoding="utf-8")) or {}).get("model", {})
             from smartisp.models.config import UNetConfig
 
             model_config = UNetConfig(**model)
