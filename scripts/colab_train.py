@@ -132,6 +132,7 @@ def main() -> int:
     )
     model["base_channels"] = _env_int("SMARTISP_BASE_CHANNELS", model.get("base_channels"))
     model["depth"] = _env_int("SMARTISP_DEPTH", model.get("depth"))
+    model = {key: value for key, value in model.items() if value is not None}
     model_config = UNetConfig(**model)
     loss_config = LossConfig(**dict(raw.get("loss", {})))
 
