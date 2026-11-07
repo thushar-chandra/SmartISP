@@ -82,3 +82,15 @@ def test_modes_validate_required_components() -> None:
         )
     with pytest.raises(ValueError):
         HybridISPPipeline(config=HybridPipelineConfig(mode=HybridMode.CLASSICAL_ONLY))
+
+
+def test_hybrid_pipeline_run_with_trace() -> None:
+    log: list[str] = []
+    pipeline = HybridISPPipeline(
+        classical=_classical(log),
+        restorer=DummyRestorer(log),
+        config=HybridPipelineConfig(mode=HybridMode.POST_ISP),
+    )
+    output, stages = pipeline.run_with_trace("input")
+    assert output == "input->isp->restore"
+    assert stages == ["isp", "unet_restorer"]

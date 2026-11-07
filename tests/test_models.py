@@ -83,3 +83,5 @@ def test_rgb_restorer_adapter() -> None:
     assert isinstance(output, RGBImage)
     assert output.shape == image.shape
     assert output.data.min() >= 0.0 and output.data.max() <= 1.0
+    assert "restoration" in output.metadata
+    assert output.metadata["restoration"]["latency_ms"] >= 0.0

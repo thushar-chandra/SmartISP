@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,7 @@ def _as_float_image(data: Any) -> np.ndarray:
     maximum = float(np.nanmax(array)) if array.size else 1.0
     if maximum > 1.5 and maximum <= 255.5:
         array = array / 255.0
-    return np.clip(array, 0.0, 1.0)
+    return np.ascontiguousarray(np.clip(array, 0.0, 1.0))
 
 
 class RGBRestorer:
@@ -69,8 +70,10 @@ class RGBRestorer:
         data = _as_float_image(image.data)
         tensor = self._torch.from_numpy(data).permute(2, 0, 1).unsqueeze(0)
         tensor = tensor.to(self.device)
+        t0 = time.perf_counter()
         with self._torch.no_grad():
             output = self.model(tensor)
+        latency_ms = (time.perf_counter() - t0) * 1000.0
         restored = output.squeeze(0).permute(1, 2, 0).float().cpu().numpy()
         if self.clamp:
             restored = np.clip(restored, 0.0, 1.0)
@@ -79,13 +82,14 @@ class RGBRestorer:
             "checkpoint": self.checkpoint,
             "trained_weights": self.is_trained,
             "device": str(self.device),
+            "latency_ms": latency_ms,
         }
         return RGBImage(
             data=restored.astype(np.float32),
             color_space=image.color_space
             if image.color_space is not ColorSpace.UNKNOWN
             else ColorSpace.SRGB,
-            bit_depth=8,
+            bit_depth=image.bit_depth,
             metadata=metadata,
         )
 

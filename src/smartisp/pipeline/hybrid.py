@@ -86,16 +86,39 @@ class HybridISPPipeline:
             raise ValueError("no restoration model was configured")
         return self.restorer.restore(image)
 
-    def run(self, image: Any, context: ISPContext | None = None) -> Any:
+    def run_with_trace(
+        self,
+        image: Any,
+        context: ISPContext | None = None,
+    ) -> tuple[Any, list[str]]:
+        """Execute the configured hybrid pipeline and return the result plus stage trace."""
         mode = self.config.mode
+        stages_executed: list[str] = []
         if mode is HybridMode.CLASSICAL_ONLY:
-            return self.run_classical(image, context)
+            result = self.run_classical(image, context)
+            if self.classical is not None:
+                stages_executed.extend(self.classical.stage_names)
+            return result, stages_executed
         if mode is HybridMode.LEARNED_ONLY:
-            return self.run_restoration(image)
+            result = self.run_restoration(image)
+            stages_executed.append("unet_restorer")
+            return result, stages_executed
         if mode is HybridMode.PRE_ISP:
             restored = self.run_restoration(image)
-            return self.run_classical(restored, context)
+            stages_executed.append("unet_restorer")
+            classical_output = self.run_classical(restored, context)
+            if self.classical is not None:
+                stages_executed.extend(self.classical.stage_names)
+            return classical_output, stages_executed
         if mode is HybridMode.POST_ISP:
             classical_output = self.run_classical(image, context)
-            return self.run_restoration(classical_output)
+            if self.classical is not None:
+                stages_executed.extend(self.classical.stage_names)
+            restored = self.run_restoration(classical_output)
+            stages_executed.append("unet_restorer")
+            return restored, stages_executed
         raise ValueError(f"unsupported hybrid mode: {mode!r}")
+
+    def run(self, image: Any, context: ISPContext | None = None) -> Any:
+        output, _ = self.run_with_trace(image, context)
+        return output

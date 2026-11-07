@@ -96,3 +96,31 @@ def test_reference_metrics() -> None:
     values = app._metrics_for(reference, reference, [app.MetricName.PSNR, app.MetricName.SSIM])
     assert values["psnr"] > 30
     assert abs(values["ssim"] - 1.0) < 0.05
+
+
+def test_difference_visualization() -> None:
+    pytest.importorskip("cv2")
+    app = _app_module()
+    arr1 = np.zeros((32, 32, 3), dtype=np.uint8)
+    arr2 = np.full((32, 32, 3), 50, dtype=np.uint8)
+    diff_inferno = app._generate_difference_map(arr1, arr2, amplification=2.0, colormap="inferno")
+    assert diff_inferno.shape == (32, 32, 3)
+    assert diff_inferno.dtype == np.uint8
+    assert diff_inferno.max() > 0
+
+    diff_gray = app._generate_difference_map(arr1, arr2, amplification=1.0, colormap="grayscale")
+    assert diff_gray.shape == (32, 32, 3)
+    assert diff_gray.dtype == np.uint8
+
+
+def test_pipeline_diagnostics_returned() -> None:
+    app = _app_module()
+    image = _rgb_image()
+    result = app._run_pipeline(image, app.HybridMode.CLASSICAL_ONLY)
+    assert "latency_ms" in result
+    assert result["latency_ms"] >= 0.0
+    assert "stages" in result
+    assert len(result["stages"]) >= 2
+    assert "diff_stats" in result
+    assert "mean_diff_255" in result["diff_stats"]
+    assert "pct_changed" in result["diff_stats"]
